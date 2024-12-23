@@ -1,68 +1,67 @@
-# Tutoriel : Introduction à MapReduce avec Python
 
-### **Introduction**
-En tant que Data Scientists, nous sommes souvent confrontés à des quantités massives de données. Lorsque ces quantités deviennent trop grandes, de nombreuses approches classiques deviennent impraticables. Cependant, disposer de ces masses de données est une opportunité que nous souhaitons exploiter pleinement.
+# Introduction à MapReduce en Python
 
-La technique **MapReduce** est une approche efficace pour traiter d’énormes volumes de données. Bien qu’il existe de nombreuses implémentations comme **Apache Hadoop**, ce tutoriel se concentre sur la compréhension du concept en utilisant des exemples concrets et simples avec Python.
+### Introduction
+
+Dans le domaine de la science des données, nous serons amenés à travailler souvent avec d'énormes quantités de données. Dans ces cas, les approches traditionnelles peuvent s'avérer inadaptées ou tout simplement pas faisables.&#x20;
+
+La technique MapReduce exploite les avantages du parallélisme afin de traiter de larges volumes de données. Plusieurs implémentations existent, comme Apache Hadoop.&#x20;
+
+Dans cette partie nous allons présenter les concepts de MapReduce de manière intuitive, avec des exemples pratiques.
 
 ---
 
-## **Exemple de base : Trouver la plus longue chaîne**
+## Exercice : Trouver la plus longue chaîne de caractères
 
-Supposons que vous disposez d'une liste de chaînes de caractères et que vous souhaitez trouver la plus longue. Voici comment cela peut être fait en Python :
+Imaginons que nous ayons une liste de chaînes de caractères et que nous devions retourner la plus longue.
+
+### Solution Simple
 
 ```python
-# Fonction pour trouver la plus longue chaîne
+# Trouver la plus longue chaîne
 def find_longest_string(list_of_strings):
     longest_string = None
-    longest_string_len = 0 
+    longest_string_len = 0
     for s in list_of_strings:
         if len(s) > longest_string_len:
             longest_string_len = len(s)
             longest_string = s
     return longest_string
 
-# Exemple d'utilisation
 list_of_strings = ['abc', 'python', 'dima']
-print(find_longest_string(list_of_strings))  # Résultat : python
+print(find_longest_string(list_of_strings))
 ```
 
-- Cette méthode fonctionne bien pour de petites listes ou même pour des listes moyennes.
-- Cependant, avec des millions d'éléments, cette approche devient lente.
+#### Temps d'exécution pour une liste simple :
 
----
+- Liste avec 3 éléments : quelques microsecondes.
+- Liste avec 3 000 éléments : fonctionne toujours efficacement.
 
-## **Le Problème avec de Grandes Données**
-
-Avec une liste contenant 300 millions d'éléments :
+#### Problème avec 300 millions d'éléments
 
 ```python
 large_list_of_strings = list_of_strings * 100000000
-%time max_length = find_longest_string(large_list_of_strings)
+%time max_length = max(large_list_of_strings, key=len)
 ```
 
-- **Temps d'exécution** : 21.8 secondes.
-
-**Problème** : Ce temps de réponse est inacceptable dans de nombreuses applications.
+Temps d'exécution : 20+ secondes. Ce n'est pas acceptable dans un système réel.
 
 ---
 
-## **Solution : Évolutivité Horizontale (Horizontal Scaling)**
+### Approche : MapReduce
 
-Au lieu d'utiliser un processeur plus rapide (**scaling vertical**), nous pouvons paralléliser notre calcul en :
-1. Fractionnant les données en morceaux.
-2. Exécutant la fonction sur chaque morceau en parallèle.
-3. Combinant les résultats pour obtenir le résultat final.
+Pour résoudre ce problème à grande échelle, nous pouvons utiliser une approche parallèle. Cela nécessite :
 
-Cela est rendu possible en divisant notre code en deux phases :
-- **Mapper** : Transforme les données en valeurs intermédiaires.
-- **Reducer** : Combine ces valeurs pour obtenir le résultat final.
+1. De diviser les données en plusieurs blocs.
+2. D'exécuter la recherche de la plus longue chaîne sur chaque bloc.
+3. De réunir les résultats pour trouver la chaîne finale la plus longue.
 
----
+#### Etapes :
 
-## **Implémentation avec MapReduce**
+1. **Mapper** : Calculer la longueur de chaque chaîne.
+2. **Reducer** : Trouver la chaîne la plus longue.
 
-Voici une version utilisant le principe MapReduce :
+Voici comment ces étapes sont mises en œuvre :
 
 ```python
 # Mapper : Calculer la longueur des chaînes
@@ -73,69 +72,80 @@ def reducer(p, c):
         return p
     return c
 
-# Exemple de calcul
-mapped = map(mapper, list_of_strings)  # Longueurs des chaînes
-mapped = zip(list_of_strings, mapped) # Associer les chaînes à leur longueur
-reduced = reduce(reducer, mapped)     # Trouver la plus longue
-print(reduced)  # Résultat : ('python', 6)
+# Exécution MapReduce
+mapped = map(mapper, list_of_strings)
+mapped = zip(list_of_strings, mapped)
+reduced = reduce(reducer, mapped)
+print(reduced)
 ```
+
+Temps d'exécution : plus rapide qu'une exécution linéaire sur une grande liste.
 
 ---
 
-## **Parallélisation avec Multiprocessing**
+### Parallélisation avec des Blocs de Données
 
-Pour paralléliser la phase Mapper :
+Nous divisons les données en plusieurs blocs :
 
 ```python
-from multiprocessing import Pool
+data_chunks = chunkify(list_of_strings, number_of_chunks=30)
 
-def chunks_mapper(chunk):
-    mapped_chunk = map(mapper, chunk) 
+# Mapper et Reducer sur chaque bloc
+reduced_all = []
+for chunk in data_chunks:
+    mapped_chunk = map(mapper, chunk)
     mapped_chunk = zip(chunk, mapped_chunk)
-    return reduce(reducer, mapped_chunk)
+    reduced_chunk = reduce(reducer, mapped_chunk)
+    reduced_all.append(reduced_chunk)
 
-pool = Pool(8)
-data_chunks = chunkify(large_list_of_strings, number_of_chunks=8)
-mapped = pool.map(chunks_mapper, data_chunks)  # Exécution en parallèle
-reduced = reduce(reducer, mapped)
-print(reduced)  # Résultat : ('python', 6)
+# Reducer final
+reduced = reduce(reducer, reduced_all)
+print(reduced)
 ```
+
+Cette approche est scalable et permet d'être exécutée sur plusieurs processeurs ou machines.
 
 ---
 
-## **Exemple Avancé : Word Count**
+### Exemple : Comptage de mots
 
-Objectif : Trouver les 10 mots les plus utilisés dans un ensemble massif de documents.
+Imaginons que nous voulions compter les mots les plus fréquemment utilisés dans un grand jeu de données tout en excluant les mots courants (stop words).
 
-### **Mapper et Reducer pour Word Count**
+#### Implémentation du MapReduce pour le comptage de mots :
 
 ```python
 from collections import Counter
 
 def mapper(text):
-    tokens = text.split()
-    tokens = [token.lower() for token in tokens if token.isalpha()]
-    return Counter(tokens)
+    tokens_in_text = text.split()
+    tokens_in_text = map(clean_word, tokens_in_text)
+    tokens_in_text = filter(word_not_in_stopwords, tokens_in_text)
+    return Counter(tokens_in_text)
 
 def reducer(cnt1, cnt2):
     cnt1.update(cnt2)
     return cnt1
+
+def chunk_mapper(chunk):
+    mapped = map(mapper, chunk)
+    reduced = reduce(reducer, mapped)
+    return reduced
 ```
 
-### **Exécution avec MapReduce**
+#### Exécution avec parallélisation :
 
 ```python
+%%time
 data_chunks = chunkify(data, number_of_chunks=36)
-mapped = pool.map(mapper, data_chunks)
+mapped = pool.map(chunk_mapper, data_chunks)
 reduced = reduce(reducer, mapped)
-print(reduced.most_common(10))  # Top 10 mots
+print(reduced.most_common(10))
 ```
+
+Temps d'exécution : Réduction significative du temps grâce à la parallélisation.
 
 ---
 
-## **Avantages de MapReduce**
+### Conclusion
 
-1. **Scalabilité** : Ajoutez simplement plus de processeurs ou de machines.
-2. **Généricité** : Fonctionne pour une grande variété de tâches (ex. comptage, recherche, apprentissage supervisé ou non supervisé).
-
-MapReduce est une technique puissante pour traiter des données massives et constitue la base de nombreux systèmes de Big Data modernes comme Hadoop ou Spark.
+MapReduce est une technique puissante pour traiter des données massives de manière évolutive et efficace. Elle est adaptée à de nombreuses tâches comme le comptage, la recherche et les algorithmes d'apprentissage supervisé et non supervisé. Comprendre ses concepts de base est essentiel pour optimiser le traitement des données dans des environnements complexes.
